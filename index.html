@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Колесо Фортуны</title>
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <style>
+    body {
+      margin: 0; padding: 0;
+      background-color: var(--tg-theme-bg-color, #ffffff);
+      color: var(--tg-theme-text-color, #000000);
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      min-height: 100vh;
+      user-select: none;
+      -webkit-tap-highlight-color: transparent;
+    }
+    h1 {
+      font-size: 1.5rem;
+      margin-bottom: 20px;
+      color: var(--tg-theme-text-color, #000000);
+    }
+    canvas {
+      max-width: 90vw;
+      max-height: 90vw;
+      border-radius: 50%;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+      cursor: pointer;
+      transition: transform 0.1s;
+    }
+    canvas:active {
+      transform: scale(0.98);
+    }
+    #result {
+      margin-top: 20px;
+      font-size: 1.2rem;
+      font-weight: bold;
+      min-height: 1.5em;
+      color: var(--tg-theme-text-color, #000000);
+      text-align: center;
+      padding: 0 20px;
+    }
+    .spin-button {
+      margin-top: 15px;
+      padding: 12px 30px;
+      font-size: 1.1rem;
+      font-weight: bold;
+      border: none;
+      border-radius: 25px;
+      background-color: var(--tg-theme-button-color, #2481cc);
+      color: var(--tg-theme-button-text-color, #ffffff);
+      cursor: pointer;
+      transition: opacity 0.2s;
+    }
+    .spin-button:active {
+      opacity: 0.7;
+    }
+    .spin-button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+  </style>
+</head>
+<body>
+
+  <h1>?? Колесо Фортуны</h1>
+  <canvas id="wheel" width="400" height="400"></canvas>
+  <div id="result"></div>
+  <button class="spin-button" id="spinBtn">Крутить!</button>
+
+  <script>
+    // Расширяем приложение на весь экран
+    Telegram.WebApp.expand();
+
+    const canvas = document.getElementById('wheel');
+    const ctx = canvas.getContext('2d');
+    const resultDiv = document.getElementById('result');
+    const spinBtn = document.getElementById('spinBtn');
+
+    // --- Настройки колеса ---
+    const prizes = [
+      { label: 'Приз 1', color: '#FF6B6B', weight: 10 },
+      { label: 'Приз 2', color: '#4ECDC4', weight: 20 },
+      { label: 'Приз 3', color: '#FFE66D', weight: 15 },
+      { label: 'Приз 4', color: '#A8E6CF', weight: 10 },
+      { label: 'Приз 5', color: '#FFB347', weight: 25 },
+      { label: 'Приз 6', color: '#B19CD9', weight: 20 }
+    ];
+
+    const numSegments = prizes.length;
+    const anglePerSegment = (2 * Math.PI) / numSegments;
+    let currentAngle = 0; // текущий угол поворота колеса
+    let isSpinning = false;
+
+    // --- Вспомогательная функция: выбор приза по весу ---
+    function pickPrizeIndex() {
+      const totalWeight = prizes.reduce((sum, p) => sum + p.weight, 0);
+      let random = Math.random() * totalWeight;
+      for (let i = 0; i < prizes.length; i++) {
+        if (random < prizes[i].weight) return i;
+        random -= prizes[i].weight;
+      }
+      return prizes.length - 1; // fallback
+    }
+
+    // --- Отрисовка колеса ---
+    function drawWheel() {
+      const centerX = canvas.width / 2;
+      const centerY = canvas.height / 2;
+      const radius = Math.min(centerX, centerY) - 5;
+
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      for (let i = 0; i < numSegments; i++) {
+        const startAngle = currentAngle + i * anglePerSegment;
+        const endAngle = startAngle + anglePerSegment;
+
+        // Сектор
+        ctx.beginPath();
+        ctx.moveTo(centerX, centerY);
+        ctx.arc(centerX, centerY, radius, startAngle, endAngle);
+        ctx.closePath();
+        ctx.fillStyle = prizes[i].color;
+        ctx.fill();
+        ctx.strokeStyle = '#fff';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+
+        // Текст
+        ctx.save();
+        ctx.translate(centerX, centerY);
+        ctx.rotate(startAngle + anglePerSegment / 2);
+        ctx.textAlign = 'right';
+        ctx.fillStyle = '#333';
+        ctx.font = 'bold 14px sans-serif';
+        ctx.fillText(prizes[i].label, radius - 15, 5);
+        ctx.restore();
+      }
+
+      // Центральный круг
+      ctx.beginPath();
+      ctx.arc(centerX, centerY, 30, 0, 2 * Math.PI);
+      ctx.fillStyle = '#fff';
+      ctx.fill();
+      ctx.strokeStyle = '#ccc';
+      ctx.lineWidth = 3;
+      ctx.stroke();
+
+      // Указатель (треугольник сверху)
+      ctx.beginPath();
+      ctx.moveTo(centerX - 10, centerY - radius - 5);
+      ctx.lineTo(centerX + 10, centerY - radius - 5);
+      ctx.lineTo(centerX, centerY - radius + 20);
+      ctx.closePath();
+      ctx.fillStyle = '#FF4444';
+      ctx.fill();
+      ctx.strokeStyle = '#fff';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+    }
+
+    // --- Вращение колеса ---
+    function spinWheel() {
+      if (isSpinning) return;
+      isSpinning = true;
+      spinBtn.disabled = true;
+      resultDiv.textContent = '';
+
+      const winningIndex = pickPrizeIndex();
+
+      // Целевой угол: чтобы выигрышный сектор оказался под указателем (сверху)
+      // Указатель на -90° (или 1.5?). Выигрышный сектор должен оказаться там.
+      // Текущий угол выигрышного сектора: currentAngle + winningIndex * anglePerSegment + anglePerSegment/2
+      // Мы хотим, чтобы после поворота этот угол стал равен -?/2 (или 3?/2) по модулю 2?
+      const targetBaseAngle = -Math.PI / 2 - (winningIndex * anglePerSegment + anglePerSegment / 2);
+
+      // Добавляем несколько полных оборотов для эффекта
+      const fullSpins = 5 + Math.floor(Math.random() * 3);
+      const totalRotation = fullSpins * 2 * Math.PI;
+
+      // Нормализуем текущий угол, чтобы анимация начиналась с текущего положения
+      const startAngle = currentAngle % (2 * Math.PI);
+      const finalAngle = targetBaseAngle + totalRotation;
+
+      const duration = 4000 + Math.random() * 1000; // 4-5 секунд
+      const startTime = performance.now();
+
+      function animate(currentTime) {
+        const elapsed = currentTime - startTime;
+        let progress = Math.min(elapsed / duration, 1);
+
+        // Easing: easeOutCubic
+        progress = 1 - Math.pow(1 - progress, 3);
+
+        currentAngle = startAngle + (finalAngle - startAngle) * progress;
+        drawWheel();
+
+        if (progress < 1) {
+          requestAnimationFrame(animate);
+        } else {
+          // Финализируем
+          currentAngle = finalAngle % (2 * Math.PI);
+          drawWheel();
+
+          // Показываем результат
+          const prize = prizes[winningIndex];
+          resultDiv.textContent = `?? Вы выиграли: ${prize.label}!`;
+
+          // Вибрация в Telegram
+          if (Telegram.WebApp.HapticFeedback) {
+            Telegram.WebApp.HapticFeedback.notificationOccurred('success');
+          }
+
+          isSpinning = false;
+          spinBtn.disabled = false;
+        }
+      }
+
+      requestAnimationFrame(animate);
+    }
+
+    // --- Инициализация ---
+    drawWheel();
+
+    // Обработчики
+    spinBtn.addEventListener('click', spinWheel);
+    canvas.addEventListener('click', spinWheel);
+  </script>
+</body>
+</html>
